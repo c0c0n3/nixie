@@ -9,12 +9,10 @@
   let
     lib = import ./lib nixpkgs.lib;
 
-    output = lib.flakes.mkOutputForCoreSystems nixpkgs;
+    output = lib.flakes.mkOutputsForCoreSystems nixpkgs;
     tex = import ./pkgs/tex/mkSysOutput.nix;
 
-    pkgs = lib.sets.mergeAll [
-      (output tex)
-    ];
+    pkgs = output [ tex ];
 
     modules = {};
   in

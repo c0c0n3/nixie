@@ -71,11 +71,23 @@ in rec
       inherit system;
       sysPkgs = nixpkgs.legacyPackages.${system};
     };
-    outputs =  builtins.map buildOutputSet systems;
+    outputs = builtins.map buildOutputSet systems;
   in
     sets.mergeAll outputs;
 
   # Shortcut to call `mkOutput` with `coreSystems` as first argument.
   mkOutputForCoreSystems = mkOutput coreSystems;
+
+  # Same as `mkOutput` but it takes a list of `mkSysOutput` functions and
+  # combines all the output sets produced by those functions.
+  mkOutputs = systems: nixpkgs: mkSysOutputs:
+  let
+    build = mkOutput systems nixpkgs;
+    outputSets = builtins.map build mkSysOutputs;
+  in
+    sets.mergeAll outputSets;
+
+  # Shortcut to call `mkOutputs` with `coreSystems` as first argument.
+  mkOutputsForCoreSystems = mkOutputs coreSystems;
 
 }

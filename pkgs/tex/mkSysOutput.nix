@@ -11,5 +11,7 @@ let
   tex = import ./env.nix { pkgs = sysPkgs; };
 in {
   pkgs.tex = tex;
-  packages.${system}.tex = tex.defaultEnv;
+  packages.${system} = {
+    tex = tex.defaultEnv;
+  };
 }

@@ -104,15 +104,24 @@ rec {
   mkPdfs = {
     # The Nix derivation name. Defaults to "pdfs".
     pkgName ? "pdfs",
-    # The directory containing the LaTeX sources. Defaults to the directory
-    # where you put the Nix expression calling this function.
-    srcDir ? ./.,
+    # The directory containing the LaTeX sources.
+    srcDir,
     # List of TeX file path-names (relative to `srcDir`) on which to run the
     # LaTeX engine. We output a PDF for each file.
     targetFiles,
     # Extra packages to add to the TeX environment used to build the PDFs.
     # Defaults to none.
-    extraPkgSet ? {}
+    extraPkgSet ? {},
+    # Value to set in the `SOURCE_DATE_EPOCH` environment variable when
+    # building the PDFs. LaTeX looks at this variable when outputting dates,
+    # e.g. the `\today` macro outputs the date set in `SOURCE_DATE_EPOCH`.
+    # We default this value to the current time when you build the PDFs, i.e.
+    # when Nix evaluates the returned derivation expression. You can change
+    # that by explicitly setting this input parameter to a string containing
+    # a Unix timestamp (with no fractional part, e.g. "1640713410") or to
+    # a (coreutils) `date` command generating one, as in
+    # "$(date -d '2021-12-28' +%s)".
+    sourceDateEpoch ? "$(date +%s)"
   }:
   let
     tex = mkEnv extraPkgSet;
@@ -130,6 +139,7 @@ rec {
 
     buildPhase = ''
       export PATH="${pkgs.lib.makeBinPath buildInputs}";
+      export SOURCE_DATE_EPOCH=${sourceDateEpoch}
       mkdir -p .cache/texmf-var
       export TEXMFHOME=.cache TEXMFVAR=.cache/texmf-var
       ${buildCmdLines}
@@ -148,12 +158,19 @@ rec {
 # issue w/ `mktemp` on BSD and macOS.
 # 3. LuaLaTeX cache. (1) mentions you should set env vars to tell LuaLaTeX
 # where to cache stuff.
-# 4. Reproducible PDFs. (1) points out the date and doc ID in the PDF files
+# 4. LaTeX dates. As noted LaTeX looks at `SOURCE_DATE_EPOCH`, so we need
+# to be able to set it otherwise whenever a document calls a macro like
+# `\today` it gets the value Nix sets in `SOURCE_DATE_EPOCH` which is 1980
+# both when using `stdenvNoCC.mkDerivation` and `stdenv.mkDerivation`---that
+# was a bit of a surprise since I thought `stdenv.mkDerivation` would call
+# - https://github.com/NixOS/nixpkgs/blob/master/pkgs/build-support/setup-hooks/set-source-date-epoch-to-latest.sh
+# 5. Reproducible PDFs. (1) points out the date and doc ID in the PDF files
 # will be different every time you build the Nix package. Not a biggie to
 # me, but (1) explains how to get around that if you're that way inclined.
-# 5. Fonts. If a font you need for your PDF isn't in the default fonts we
+# 6. Fonts. If a font you need for your PDF isn't in the default fonts we
 # use, you can always add it using the `extraPkgSet` argument. But what
 # if that font isn't in the TexLive distro?! Guess what. (1) shows you
 # how to add an arbitrary font to a Nix Flake for building LaTeX docs.
 # I'm not doing it here, since it seems overkill at the moment.
+
 }

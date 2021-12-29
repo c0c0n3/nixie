@@ -38,7 +38,9 @@
 # when calling `mkEnv`---see below.
 #
 { pkgs, ... }:
-rec {
+let
+  xlib = import ../../lib pkgs.lib;
+in rec {
 
   # The default set of packages included in our TeX environment.
   basePkgs = with pkgs; {
@@ -66,28 +68,27 @@ rec {
   # Build a Tex environment containing the base packages plus any extras
   # given in the argument. E.g.
   #
-  #     extraPkgSet = with pkgs; { inherit (texlive) fontawesome; };
-  #     myLatex = mkEnv extraPkgSet;
+  #     myLatex = mkEnv ["fira" "fontawesome"];
   #
   # This function returns a derivation for the TeX environment.
-  #
-  mkEnv = extraPkgSet: pkgs.texlive.combine ({
+  mkEnv = extraPkgs:
+  with builtins;
+  let
+    mkExtraPkgAttr = name: { ${name} = pkgs.texlive.${name}; };
+    extraPkgSet = xlib.sets.mergeAll (map mkExtraPkgAttr extraPkgs);
+    pkgsArg = {
       pkgFilter = pkg: pkg.tlType == "run" || pkg.tlType == "bin";  # (*)
-    } // basePkgs // extraPkgSet);
+    } // basePkgs // extraPkgSet;
+  in
+    pkgs.texlive.combine pkgsArg;
   # NOTE. Filtering out doc derivation outputs by not including "doc" type.
 
   # A TeX environment containing the base packages plus some hand-picked
   # fonts from collection-fontsextra. These are the fonts that I've been
   # using in my LaTeX docs that aren't included in the base TeX fonts.
-  defaultEnv = let
-    extraFonts = with pkgs; {
-      inherit (texlive)
-        alegreya
-        eulervm
-        fontawesome
-        iwona
-        sourcecodepro;
-    };
+  defaultEnv =
+  let
+    extraFonts = ["alegreya" "eulervm" "fontawesome" "iwona" "sourcecodepro"];
   in
     mkEnv extraFonts;
 
@@ -109,9 +110,9 @@ rec {
     # List of TeX file path-names (relative to `srcDir`) on which to run the
     # LaTeX engine. We output a PDF for each file.
     targetFiles,
-    # Extra packages to add to the TeX environment used to build the PDFs.
-    # Defaults to none.
-    extraPkgSet ? {},
+    # List of extra Tex packages (names) to add to the TeX environment used
+    # to build the PDFs. Defaults to none.
+    extraPkgs ? [],
     # Value to set in the `SOURCE_DATE_EPOCH` environment variable when
     # building the PDFs. LaTeX looks at this variable when outputting dates,
     # e.g. the `\today` macro outputs the date set in `SOURCE_DATE_EPOCH`.
@@ -124,7 +125,7 @@ rec {
     sourceDateEpoch ? "$(date +%s)"
   }:
   let
-    tex = mkEnv extraPkgSet;
+    tex = mkEnv extraPkgs;
     toPdf = target: ''
       latexmk -interaction=nonstopmode -pdf -lualatex '${target}'
     '';

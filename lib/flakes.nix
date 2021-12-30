@@ -17,10 +17,9 @@ in rec
     "aarch64-linux" "aarch64-darwin" "x86_64-linux" "x86_64-darwin"
   ];
 
-  # mkOutput :: [str] -> set -> (str -> set -> set) -> set
-  # mkOutput   systems  nixpkgs     mkSysOutput       Flake output set
+  # Combine Flake system-specific outputs into the final Flake output set,
+  # i.e. the `outputs` attribute set.
   #
-  # Build a Flake output set, i.e. the `outputs` attribute set.
   # Typically, a Flake output set depends on the systems the Flake targets.
   # Nix identifies systems with labels like "x86_64-linux" and expects the
   # Flake to group output derivations by system as in e.g.
@@ -34,9 +33,13 @@ in rec
   #       my-tool = {/* derivation */};
   #     };
   #
-  # This builder tries to reduce the boilerplate needed to generate a Flake
-  # output set by using an input `mkSysOutput` function that can produce an
-  # output set parameterised by system as in e.g.
+  # One way to build the Flake output set is to produce a set for each system
+  # the Flake targets and then combine these sets into the final Flake output
+  # set. This is basically what `buildOutputSet` does. The process of producing
+  # a system-specific output is encapsulated by a `mkSysOutput` function that
+  # given a system label and the set of Nix packages for that system outputs
+  # a set with the attributes that the system at hand contributes to the final
+  # Flake output set, e.g.
   #
   #     mkSysOutput = { system, ... }: {
   #       packages.${system} = {
@@ -45,49 +48,105 @@ in rec
   #       };
   #     };
   #
-  # It then uses `mkSysOutput` to generate a system output set for each
-  # input system and finally merges the system output sets into one.
-  # Notice you'd typically use this builder when you want to output
-  # the same derivations for a whole bunch of systems. If you need
-  # to output different derivations for different systems, you're better
-  # off with another builder. But outputting attributes that don't depend
-  # on the input systems (e.g. a lib function) is okay, since they'll all
-  # be the same for each system output set produced by `mkSysOutput`, so
-  # when this builder merges the individual system outputs into the final
-  # Flake output, you'll end up with those attributes in place as you'd
-  # expect.
+  # Here's some pseudo (dependent) types to explain what `buildOutputSet` does.
   #
-  # Params:
-  # - systems: a list of system labels, e.g. `["x86_64-linux" "aarch64-linux"]`.
-  # - nixpkgs: the Nix package set from which to source input packages.
-  # - mkSysOutput: a function to build the Flake output for a given system.
-  #   The function takes an input set with two attributes
-  #   * system: one of the labels in `systems`
-  #   * sysPkgs: the Nix package set for `system`
-  #   and returns the Flake output for `system` as explained earlier.
-  mkOutput = systems: nixpkgs: mkSysOutput:
+  # System =  "aarch64-linux" | ...  -- all valid Nix system labels
+  # Nixpkgs :: set                   -- Flake's input containing Nix packages
+  #                                     for each system (github:NixOs/nixpkgs)
+  # PkgsOf :: System -> set          -- Nix package set for a system
+  # OutGen = { system :: System;
+  #            mkSysOutput :: System -> PkgsOf System -> set;
+  #         -- param names:   ^ system  ^ sysPkgs
+  #          }
+  #
+  # buildOutputSet :: Nixpkgs -> [OutGen] -> set
+  # buildOutputSet nixpkgs [g1, .., gN] =
+  #     (g1.mkSysOutput g1.system (pkgsOf g1.system))
+  #   + ...
+  #   + (gN.mkSysOutput gN.system (pkgsOf gN.system))
+  #
+  # where `+` merges attribute sets recursively.
+  #
+  buildOutputSet = nixpkgs: outGens:
   let
-    buildOutputSet = system: mkSysOutput {
-      inherit system;
-      sysPkgs = nixpkgs.legacyPackages.${system};
+    genOutput = outGen:
+      outGen.mkSysOutput {
+        system  = outGen.system;
+        sysPkgs = nixpkgs.legacyPackages.${outGen.system};
     };
-    outputs = builtins.map buildOutputSet systems;
+    sysOutputs = builtins.map genOutput outGens;
   in
-    sets.mergeAll outputs;
+    sets.mergeAll sysOutputs;
 
-  # Shortcut to call `mkOutput` with `coreSystems` as first argument.
-  mkOutputForCoreSystems = mkOutput coreSystems;
-
-  # Same as `mkOutput` but it takes a list of `mkSysOutput` functions and
-  # combines all the output sets produced by those functions.
-  mkOutputs = systems: nixpkgs: mkSysOutputs:
+  # Build a Flake output set by combining the outputs produced by the
+  # given `mkSysOutput` function when applied to each input system.
+  # This is just a variation on the theme of `buildOutputSet` where the
+  # `mkSysOutput` function is the same for all systems. Using the same
+  # pseudo types as in `buildOutputSet`, here's a high-level description
+  # of what `mkOutputSet` does:
+  #
+  # mkOutputSet :: [System] -> Nixpkgs -> (System -> PkgsOf System -> set)
+  #                -> set
+  # mkOutputSet [s1, .., sN] nixpkgs mkSysOutput =
+  #     (mkSysOutput s1 (pkgsOf s1))
+  #   + ...
+  #   + (mkSysOutput sN (pkgsOf sN))
+  #
+  # where `+` merges attribute sets recursively.
+  #
+  # Notice you'd typically use `mkOutputSet` when you want to output the same
+  # derivations for a whole bunch of systems. If you need to output different
+  # derivations for different systems, you're better off with `buildOutputSet`.
+  # But outputting attributes that don't depend on the input systems (e.g. a
+  # lib function) is okay, since they'll all be the same for each system output
+  # set produced by `mkSysOutput`, so when `mkOutputSet` merges the individual
+  # system outputs into the final Flake output, you'll end up with those
+  # attributes in place as you'd expect.
+  mkOutputSet = systems: nixpkgs: mkSysOutput:
   let
-    build = mkOutput systems nixpkgs;
-    outputSets = builtins.map build mkSysOutputs;
+    mkOutGen = system: { inherit system mkSysOutput; };
+    outGens  = builtins.map mkOutGen systems;
   in
-    sets.mergeAll outputSets;
+    buildOutputSet nixpkgs outGens;
 
-  # Shortcut to call `mkOutputs` with `coreSystems` as first argument.
-  mkOutputsForCoreSystems = mkOutputs coreSystems;
+  # Shortcut to call `mkOutputSet` with `coreSystems` as first argument.
+  mkOutputSetForCoreSystems = mkOutputSet coreSystems;
+
+  # Call `buildOutputSet` with the output generators resulting from combining
+  # the input systems and `mkSysOutput` functions in all possible ways.
+  # Using the same pseudo types as in `buildOutputSet`, here's a high-level
+  # description of what `mkOutputSetByCartProd` does:
+  #
+  #     nixpkgs :: Nixpkgs
+  #
+  #     systems :: [System]
+  #     systems = [s1, .., sM]
+  #
+  #     mkSysOutputs :: [System -> PkgsOf System -> set]
+  #     mkSysOutputs = [f1, .., fN]
+  #
+  #     mkOutputSetByCartProd systems nixpkgs mkSysOutputs =
+  #       buildOutputSet nixpkgs [
+  #         { system = s1; mkSysOutput = f1; }
+  #         ...
+  #         { system = s1; mkSysOutput = fN; }
+  #         ...
+  #         { system = sM; mkSysOutput = f1; }
+  #         ...
+  #         { system = sM; mkSysOutput = fN; }
+  #       ]
+  #
+  mkOutputSetByCartProd = systems: nixpkgs: mkSysOutputs:
+  with builtins;
+  let
+    xs = map (system: { inherit system; }) systems;
+    ys = map (mkSysOutput: { inherit mkSysOutput; }) mkSysOutputs;
+    outGens = sets.cartProd xs ys;
+  in
+    buildOutputSet nixpkgs outGens;
+
+  # Shortcut to call `mkOutputSetByCartProd` with `coreSystems` as first
+  # argument.
+  mkOutputSetByCartProdForCoreSystems = mkOutputSetByCartProd coreSystems;
 
 }

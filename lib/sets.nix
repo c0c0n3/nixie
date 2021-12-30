@@ -52,4 +52,26 @@ nixlib: rec
   in
     mergeAll targets;
 
+  # cartProd :: [set] -> [set] -> [set]
+  #
+  # Given two lists of sets `xs` and `ys`, return the list
+  #
+  #     [ merge x y | x ∈ xs, y ∈ ys ]
+  #
+  # Example:
+  #
+  #   cartProd [ { x1 = 1; } { x2 = 2; } ]
+  #            [ { y1 = 1; } { y2 = 2;} { y3 = 3;} ]
+  #   ~~>
+  #       [ { x1 = 1; y1 = 1; } { x2 = 2; y1 = 1; }
+  #         { x1 = 1; y2 = 2; } { x2 = 2; y2 = 2; }
+  #         { x1 = 1; y3 = 3; } { x2 = 2; y3 = 3; } ]
+  #
+  cartProd = xs: ys:
+  with builtins;
+  let
+    mergeY = y: map (x: merge x y) xs;
+  in
+    concatMap mergeY ys;
+
 }

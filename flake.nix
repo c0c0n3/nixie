@@ -9,7 +9,7 @@
   let
     lib = import ./lib nixpkgs.lib;
 
-    output = lib.flakes.mkOutputsForCoreSystems nixpkgs;
+    output = lib.flakes.mkOutputSetByCartProdForCoreSystems nixpkgs;
     tex = import ./pkgs/tex/mkSysOutput.nix;
 
     pkgs = output [ tex ];

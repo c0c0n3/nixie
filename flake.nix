@@ -11,9 +11,10 @@
 
     output = lib.flakes.mkOutputSetByCartProdForCoreSystems nixpkgs;
     cli-tools = import ./pkgs/cli-tools/mkSysOutput.nix;
+    haskell = import ./pkgs/haskell/mkSysOutput.nix;
     tex = import ./pkgs/tex/mkSysOutput.nix;
 
-    pkgs = output [ cli-tools tex ];
+    pkgs = output [ cli-tools haskell tex ];
 
     modules = {};
   in

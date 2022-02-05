@@ -14,7 +14,7 @@ in rec
   # - https://github.com/NixOS/rfcs/blob/master/rfcs/0046-platform-support-tiers.md
   # - https://nixos.org/manual/nixpkgs/stable/#var-meta-platforms
   coreSystems = [
-    "aarch64-linux" "aarch64-darwin" "x86_64-linux" "x86_64-darwin"
+     "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"
   ];
 
   # Combine Flake system-specific outputs into the final Flake output set,

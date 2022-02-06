@@ -35,7 +35,7 @@
 
   xUtils = with pkgs; [ xorg.xdpyinfo xorg.xev xorg.xmodmap ];
 
-  mkEnv = { system ? "", withXtools ? false }:
+  mkEnv = { system ? builtins.currentSystem, withXtools ? false }:
   let
     isLinux = (builtins.match ".*-linux$" system) != null;
     xs = if withXtools then xUtils else [];

@@ -67,12 +67,29 @@ in rec
   #
   # where `+` merges attribute sets recursively.
   #
+  # Plus, you can make `buildOutputSet` use Flake overlays by adding a
+  # custom `mkOverlays` function to the `nixpkgs` set. The function takes
+  # a system and returns a list of Flake overlays for that system. E.g.
+  #
+  #     inputPkgs = nixpkgs // {
+  #        mkOverlays = system: [ gomod2nix.overlays.default ];
+  #                               # ^ works w/ all core systems
+  #     };
+  #     pkgs = buildOutputSet inputPkgs outGens
+  #
+  # every function in `outGens` now gets passed a package set containing
+  # `gomod2nix` plus whatever was already in `nixpkgs`.
+  #
   buildOutputSet = nixpkgs: outGens:
   let
+    mkOverlays = nixpkgs.mkOverlays or (system: []);
     genOutput = outGen:
       outGen.mkSysOutput {
         system  = outGen.system;
-        sysPkgs = nixpkgs.legacyPackages.${outGen.system};
+        sysPkgs = import nixpkgs {
+          system = outGen.system;
+          overlays = mkOverlays outGen.system;
+        };
     };
     sysOutputs = builtins.map genOutput outGens;
   in

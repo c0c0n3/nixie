@@ -75,20 +75,34 @@ in rec
   #        mkOverlays = system: [ gomod2nix.overlays.default ];
   #                               # ^ works w/ all core systems
   #     };
-  #     pkgs = buildOutputSet inputPkgs outGens
+  #     pkgs = buildOutputSet inputPkgs outGens;
   #
   # every function in `outGens` now gets passed a package set containing
   # `gomod2nix` plus whatever was already in `nixpkgs`.
   #
+  # Also you can customise the Nixpkgs config `buildOutputSet` passes
+  # in to the input `nixpkgs`. To do that just add a custom `mkConfig`
+  # function to the `nixpkgs` set. The function takes a system and returns
+  # a Nixpkgs config for that system. E.g.
+  #
+  #     inputPkgs = nixpkgs // {
+  #        mkConfig = system: if system == "aarch64-linux" then {
+  #          permittedInsecurePackages = [ "qtwebkit-5.212.0-alpha4" ];
+  #        } else {};
+  #     };
+  #     pkgs = buildOutputSet inputPkgs outGens;
+  #
   buildOutputSet = nixpkgs: outGens:
   let
     mkOverlays = nixpkgs.mkOverlays or (system: []);
+    mkConfig = nixpkgs.mkConfig or (system: {});
     genOutput = outGen:
       outGen.mkSysOutput {
         system  = outGen.system;
         sysPkgs = import nixpkgs {
           system = outGen.system;
           overlays = mkOverlays outGen.system;
+          config = mkConfig outGen.system;
         };
     };
     sysOutputs = builtins.map genOutput outGens;
